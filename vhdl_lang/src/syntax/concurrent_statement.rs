@@ -213,7 +213,10 @@ pub fn parse_process_statement(
                 if *symbol != label.item {
                     diagnostics.push(Diagnostic::error(
                         &token,
-                        format!("Label at the end of process '{}' does not match the block label '{}'.", symbol, label.item),
+                        format!(
+                            "Label at the end of process '{}' does not match the block label '{}'.",
+                            symbol, label.item
+                        ),
                     ));
                 }
             }
