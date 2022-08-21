@@ -574,9 +574,7 @@ impl DesignRoot {
         // @TODO run in parallel
         let mut units: Vec<_> = Vec::new();
         for library in self.libraries.values() {
-            for unit in library.units.values() {
-                units.push(unit);
-            }
+            units.extend(library.units.values());
         }
 
         // @TODO compute the best order to process the units in parallel
