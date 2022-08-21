@@ -415,21 +415,27 @@ pub enum EntityName {
 }
 
 /// LRM 7.2 Attribute specification
-// @TODO there are more classes
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum EntityClass {
     Entity,
     Architecture,
     Configuration,
-    Package,
-    Signal,
-    Variable,
     Procedure,
     Function,
-    Component,
-    Constant,
+    Package,
     Type,
+    Subtype,
+    Constant,
+    Signal,
+    Variable,
+    Component,
     Label,
+    Literal,
+    Units,
+    Group,
+    File,
+    Property,
+    Sequence,
 }
 
 /// LRM 7.2 Attribute specification
