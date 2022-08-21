@@ -154,6 +154,7 @@ fn parse_block_header(
 pub fn parse_process_statement(
     stream: &mut TokenStream,
     postponed: bool,
+    label: Option<WithPos<Symbol>>,
     diagnostics: &mut dyn DiagnosticHandler,
 ) -> ParseResult<ProcessStatement> {
     let token = stream.peek_expect()?;
@@ -205,8 +206,27 @@ pub fn parse_process_statement(
         }
     }
     stream.expect_kind(Process)?;
-    // @TODO check name
-    stream.pop_if_kind(Identifier)?;
+    if let Ok(Some(token)) = stream.pop_if_kind(Identifier) {
+        if let Some(label) = label {
+            use crate::syntax::tokens::Value::Identifier;
+            if let Identifier(ref symbol) = token.value {
+                if *symbol != label.item {
+                    diagnostics.push(Diagnostic::error(
+                        &token,
+                        format!(
+                            "Label at the end of process '{}' does not match the block label '{}'.",
+                            symbol, label.item
+                        ),
+                    ));
+                }
+            }
+        } else {
+            diagnostics.push(Diagnostic::error(
+                token,
+                "Label present at the end of process but no block label.",
+            ));
+        }
+    }
     stream.expect_kind(SemiColon)?;
     Ok(ProcessStatement {
         postponed,
@@ -551,6 +571,7 @@ fn parse_case_generate_statement(
 pub fn parse_concurrent_statement(
     stream: &mut TokenStream,
     token: Token,
+    label: Option<WithPos<Symbol>>,
     diagnostics: &mut dyn DiagnosticHandler,
 ) -> ParseResult<ConcurrentStatement> {
     let statement = {
@@ -560,7 +581,7 @@ pub fn parse_concurrent_statement(
                 ConcurrentStatement::Block(parse_block_statement(stream, diagnostics)?)
             },
             Process => {
-                ConcurrentStatement::Process(parse_process_statement(stream, false, diagnostics)?)
+                ConcurrentStatement::Process(parse_process_statement(stream, false, label, diagnostics)?)
             },
             Component => {
                 let unit = InstantiatedUnit::Component(parse_selected_name(stream)?);
@@ -591,7 +612,7 @@ pub fn parse_concurrent_statement(
             Postponed => {
                 let token = stream.expect()?;
                 match token.kind {
-                    Process => ConcurrentStatement::Process(parse_process_statement(stream, true, diagnostics)?),
+                    Process => ConcurrentStatement::Process(parse_process_statement(stream, true, label, diagnostics)?),
                     Assert => ConcurrentStatement::Assert(parse_concurrent_assert_statement(stream, true)?),
                     With => ConcurrentStatement::Assignment(parse_selected_signal_assignment(stream, true)?),
                     _ => {
@@ -672,7 +693,7 @@ pub fn parse_labeled_concurrent_statement_initial_token(
         if token.kind == Colon {
             let label = Some(to_simple_name(name)?);
             let token = stream.expect()?;
-            let statement = parse_concurrent_statement(stream, token, diagnostics)?;
+            let statement = parse_concurrent_statement(stream, token, label.clone(), diagnostics)?;
             Ok(LabeledConcurrentStatement { label, statement })
         } else {
             let target = name.map_into(Target::Name);
@@ -683,7 +704,7 @@ pub fn parse_labeled_concurrent_statement_initial_token(
             })
         }
     } else {
-        let statement = parse_concurrent_statement(stream, token, diagnostics)?;
+        let statement = parse_concurrent_statement(stream, token, None, diagnostics)?;
         Ok(LabeledConcurrentStatement {
             label: None,
             statement,
@@ -1062,6 +1083,44 @@ end process;
             )]
         );
         assert_eq!(stmt.statement, ConcurrentStatement::Process(process));
+    }
+
+    #[test]
+    fn test_process_label_only_at_end() {
+        let code = Code::new(
+            "\
+process(all) is
+begin
+end process foo;
+",
+        );
+        let (_stmt, diagnostics) = code.with_stream_diagnostics(parse_labeled_concurrent_statement);
+        assert_eq!(
+            diagnostics,
+            vec![Diagnostic::error(
+                code.s1("foo"),
+                "Label present at the end of process but no block label."
+            )]
+        );
+    }
+
+    #[test]
+    fn test_process_label_mismatch() {
+        let code = Code::new(
+            "\
+foo: process(all) is
+begin
+end process bar;
+",
+        );
+        let (_stmt, diagnostics) = code.with_stream_diagnostics(parse_labeled_concurrent_statement);
+        assert_eq!(
+            diagnostics,
+            vec![Diagnostic::error(
+                code.s1("bar"),
+                "Label at the end of process 'bar' does not match the block label 'foo'."
+            )]
+        );
     }
 
     #[test]
